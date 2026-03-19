@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FitmentOS v2</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.css">
+<script src="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.js"></script>
+
+<style>
+body {
+  background:#0f172a;
+  color:#e2e8f0;
+  font-family:Arial;
+  margin:0;
+}
+h1 {
+  padding:10px;
+}
+.container {
+  padding:15px;
+}
+.grid {
+  margin-top:10px;
+}
+button {
+  padding:6px 12px;
+  margin:5px;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>FitmentOS v2 🚀</h1>
+
+<div class="container">
+
+<h3>Links</h3>
+<button onclick="addLinkRow()">Add Row</button>
+<div id="links" class="grid"></div>
+
+<h3>Fitments</h3>
+<button onclick="addFitmentRow()">Add Row</button>
+<div id="fitments" class="grid"></div>
+
+<h3>Existing</h3>
+<button onclick="addExistingRow()">Add Row</button>
+<button onclick="saveExisting()">Save</button>
+<div id="existing" class="grid"></div>
+
+<h3>Output</h3>
+<button onclick="runMerge()">Run Merge</button>
+<div id="output" class="grid"></div>
+
+</div>
+
+<script>
+
+function clean(val){
+  return String(val || '').trim();
+}
+
+function extractProductId(url){
+  if(!url) return '';
+  const m = url.trim().match(/post=(\d+)/i);
+  return m ? m[1] : '';
+}
+
+function makeKey(y,mk,mo,e){
+  return [y,mk,mo,e].map(clean).join('|').toLowerCase();
+}
+
+// LINKS
+const linksHot = new Handsontable(document.getElementById('links'), {
+  data:[['','']],
+  colHeaders:['Link','Product ID'],
+  columns:[
+    {type:'text'},
+    {type:'text', readOnly:true}
+  ],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation',
+
+  afterChange(changes, source){
+    if(!changes || source === 'loadData' || source === 'auto') return;
+
+    changes.forEach(([row,col,oldVal,newVal])=>{
+      if(col===0){
+        const id = extractProductId(newVal);
+        this.setDataAtCell(row,1,id,'auto');
+      }
+    });
+  }
+});
+
+function addLinkRow(){
+  linksHot.alter('insert_row');
+}
+
+// FITMENTS
+const fitmentsHot = new Handsontable(document.getElementById('fitments'), {
+  data:[['','','','']],
+  colHeaders:['Year','Make','Model','Engine'],
+  columns:[
+    {type:'text'},
+    {type:'text'},
+    {type:'text'},
+    {type:'text'}
+  ],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation',
+
+  cells(row,col){
+    const cp = {};
+    const val = this.instance.getDataAtCell(row,3);
+    if(col===3 && !clean(val)){
+      cp.className='htInvalid';
+    }
+    return cp;
+  }
+});
+
+function addFitmentRow(){
+  fitmentsHot.alter('insert_row');
+}
+
+// EXISTING
+const existingHot = new Handsontable(document.getElementById('existing'), {
+  data:[['','','','','','']],
+  colHeaders:['ID','Year','Make','Model','Engine','Product IDs'],
+  columns:[
+    {type:'numeric'},
+    {type:'text'},
+    {type:'text'},
+    {type:'text'},
+    {type:'text'},
+    {type:'text'}
+  ],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation'
+});
+
+function addExistingRow(){
+  existingHot.alter('insert_row');
+}
+
+function saveExisting(){
+  localStorage.setItem('existing', JSON.stringify(existingHot.getData()));
+  alert('Saved ✔️');
+}
+
+function loadExisting(){
+  const data = JSON.parse(localStorage.getItem('existing')||'[]');
+  if(data.length) existingHot.loadData(data);
+}
+
+// OUTPUT
+const outputHot = new Handsontable(document.getElementById('output'), {
+  data:[],
+  colHeaders:['ID','Year','Make','Model','Engine','Product IDs','Status'],
+  columns:[{},{},{},{},{},{},{}],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation'
+});
+
+// MERGE
+function runMerge(){
+
+  const linkData = linksHot.getData();
+  const productIds = [...new Set(
+    linkData.map(r=>clean(r[1])).filter(Boolean)
+  )];
+
+  const newIds = productIds.join('|');
+
+  const existing = existingHot.getData().filter(r=>r.some(x=>clean(x)));
+  const map = {};
+  let maxId = 0;
+
+  existing.forEach(r=>{
+    const [id,y,mk,mo,e,pids] = r.map(clean);
+    if(!y && !mk && !mo && !e) return;
+
+    const key = makeKey(y,mk,mo,e);
+
+    map[key] = {
+      id: Number(id)||0,
+      pids: pids
+    };
+
+    if(Number(id)>maxId) maxId = Number(id);
+  });
+
+  const fitments = fitmentsHot.getData().filter(r=>r.some(x=>clean(x)));
+
+  let nextId = maxId;
+  const output = [];
+
+  fitments.forEach(r=>{
+    const [y,mk,mo,e] = r.map(clean);
+    if(!e) return;
+
+    const key = makeKey(y,mk,mo,e);
+
+    if(map[key]){
+      const old = map[key].pids.split('|').filter(Boolean);
+      const merged = [...new Set([...old, ...productIds])];
+      const final = merged.join('|');
+
+      const status = final === map[key].pids ? 'EXISTING' : 'UPDATED';
+
+      output.push([
+        map[key].id,
+        y,mk,mo,e,
+        final,
+        status
+      ]);
+    } else {
+      nextId++;
+      output.push([
+        nextId,
+        y,mk,mo,e,
+        newIds,
+        'NEW'
+      ]);
+    }
+  });
+
+  outputHot.loadData(output);
+}
+
+loadExisting();
+
+</script>
+
+</body>
+</html>
