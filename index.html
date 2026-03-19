@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>FitmentOS v2</title>
+<title>FitmentOS v3</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.css">
 <script src="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.js"></script>
@@ -14,221 +14,212 @@ body {
   font-family:Arial;
   margin:0;
 }
-h1 {
-  padding:10px;
+
+.tabs {
+  display:flex;
+  background:#1e293b;
 }
-.container {
+
+.tab {
+  padding:12px 20px;
+  cursor:pointer;
+}
+
+.tab.active {
+  background:#334155;
+}
+
+.pane {
+  display:none;
   padding:15px;
 }
-.grid {
-  margin-top:10px;
+
+.pane.active {
+  display:block;
 }
+
 button {
   padding:6px 12px;
   margin:5px;
   cursor:pointer;
 }
+
+.status-new { color:#22c55e; font-weight:bold; }
+.status-updated { color:#f59e0b; font-weight:bold; }
+.status-existing { color:#94a3b8; }
 </style>
 </head>
 
 <body>
 
-<h1>FitmentOS v2 🚀</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('links')">Links</div>
+  <div class="tab" onclick="switchTab('fitments')">Fitments</div>
+  <div class="tab" onclick="switchTab('existing')">Existing</div>
+  <div class="tab" onclick="switchTab('output')">Output</div>
+</div>
 
-<div class="container">
+<div id="links" class="pane active">
+  <button onclick="addLinkRow()">Add Row</button>
+  <div id="linksGrid"></div>
+</div>
 
-<h3>Links</h3>
-<button onclick="addLinkRow()">Add Row</button>
-<div id="links" class="grid"></div>
+<div id="fitments" class="pane">
+  <button onclick="addFitmentRow()">Add Row</button>
+  <div id="fitmentsGrid"></div>
+</div>
 
-<h3>Fitments</h3>
-<button onclick="addFitmentRow()">Add Row</button>
-<div id="fitments" class="grid"></div>
+<div id="existing" class="pane">
+  <input type="file" onchange="loadCSV(event)">
+  <button onclick="saveExisting()">Save</button>
+  <div id="existingGrid"></div>
+</div>
 
-<h3>Existing</h3>
-<button onclick="addExistingRow()">Add Row</button>
-<button onclick="saveExisting()">Save</button>
-<div id="existing" class="grid"></div>
-
-<h3>Output</h3>
-<button onclick="runMerge()">Run Merge</button>
-<div id="output" class="grid"></div>
-
+<div id="output" class="pane">
+  <button onclick="runMerge()">Run Merge</button>
+  <div id="outputGrid"></div>
 </div>
 
 <script>
 
-function clean(val){
-  return String(val || '').trim();
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+
+  document.querySelector(`.tab[onclick="switchTab('${name}')"]`).classList.add('active');
+  document.getElementById(name).classList.add('active');
 }
 
-function extractProductId(url){
-  if(!url) return '';
-  const m = url.trim().match(/post=(\d+)/i);
-  return m ? m[1] : '';
+function clean(v){ return String(v||'').trim(); }
+
+function extract(url){
+  const m = clean(url).match(/post=(\d+)/);
+  return m?m[1]:'';
 }
 
-function makeKey(y,mk,mo,e){
+function key(y,mk,mo,e){
   return [y,mk,mo,e].map(clean).join('|').toLowerCase();
 }
 
 // LINKS
-const linksHot = new Handsontable(document.getElementById('links'), {
+const linksHot = new Handsontable(document.getElementById('linksGrid'), {
   data:[['','']],
   colHeaders:['Link','Product ID'],
-  columns:[
-    {type:'text'},
-    {type:'text', readOnly:true}
-  ],
+  columns:[{},{readOnly:true}],
   rowHeaders:true,
   licenseKey:'non-commercial-and-evaluation',
 
-  afterChange(changes, source){
-    if(!changes || source === 'loadData' || source === 'auto') return;
-
-    changes.forEach(([row,col,oldVal,newVal])=>{
+  afterChange(c,s){
+    if(!c || s==='loadData' || s==='auto') return;
+    c.forEach(([r,col,ov,nv])=>{
       if(col===0){
-        const id = extractProductId(newVal);
-        this.setDataAtCell(row,1,id,'auto');
+        this.setDataAtCell(r,1,extract(nv),'auto');
       }
     });
   }
 });
 
-function addLinkRow(){
-  linksHot.alter('insert_row');
-}
+function addLinkRow(){ linksHot.alter('insert_row'); }
 
 // FITMENTS
-const fitmentsHot = new Handsontable(document.getElementById('fitments'), {
+const fitHot = new Handsontable(document.getElementById('fitmentsGrid'), {
   data:[['','','','']],
   colHeaders:['Year','Make','Model','Engine'],
-  columns:[
-    {type:'text'},
-    {type:'text'},
-    {type:'text'},
-    {type:'text'}
-  ],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation'
+});
+
+function addFitmentRow(){ fitHot.alter('insert_row'); }
+
+// EXISTING
+const existHot = new Handsontable(document.getElementById('existingGrid'), {
+  data:[['','','','','','']],
+  colHeaders:['ID','Year','Make','Model','Engine','Product IDs'],
+  rowHeaders:true,
+  licenseKey:'non-commercial-and-evaluation'
+});
+
+function saveExisting(){
+  localStorage.setItem('existing', JSON.stringify(existHot.getData()));
+  alert('Saved');
+}
+
+function loadExisting(){
+  const d = JSON.parse(localStorage.getItem('existing')||'[]');
+  if(d.length) existHot.loadData(d);
+}
+
+function loadCSV(e){
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const rows = ev.target.result.split('\n').map(r=>r.split(','));
+    existHot.loadData(rows);
+  }
+  reader.readAsText(file);
+}
+
+// OUTPUT
+const outHot = new Handsontable(document.getElementById('outputGrid'), {
+  data:[],
+  colHeaders:['ID','Year','Make','Model','Engine','Product IDs','Status'],
   rowHeaders:true,
   licenseKey:'non-commercial-and-evaluation',
 
-  cells(row,col){
+  cells(r,c){
     const cp = {};
-    const val = this.instance.getDataAtCell(row,3);
-    if(col===3 && !clean(val)){
-      cp.className='htInvalid';
+    if(c===6){
+      const val = this.instance.getDataAtCell(r,c);
+      if(val==='NEW') cp.className='status-new';
+      if(val==='UPDATED') cp.className='status-updated';
+      if(val==='EXISTING') cp.className='status-existing';
     }
     return cp;
   }
 });
 
-function addFitmentRow(){
-  fitmentsHot.alter('insert_row');
-}
-
-// EXISTING
-const existingHot = new Handsontable(document.getElementById('existing'), {
-  data:[['','','','','','']],
-  colHeaders:['ID','Year','Make','Model','Engine','Product IDs'],
-  columns:[
-    {type:'numeric'},
-    {type:'text'},
-    {type:'text'},
-    {type:'text'},
-    {type:'text'},
-    {type:'text'}
-  ],
-  rowHeaders:true,
-  licenseKey:'non-commercial-and-evaluation'
-});
-
-function addExistingRow(){
-  existingHot.alter('insert_row');
-}
-
-function saveExisting(){
-  localStorage.setItem('existing', JSON.stringify(existingHot.getData()));
-  alert('Saved ✔️');
-}
-
-function loadExisting(){
-  const data = JSON.parse(localStorage.getItem('existing')||'[]');
-  if(data.length) existingHot.loadData(data);
-}
-
-// OUTPUT
-const outputHot = new Handsontable(document.getElementById('output'), {
-  data:[],
-  colHeaders:['ID','Year','Make','Model','Engine','Product IDs','Status'],
-  columns:[{},{},{},{},{},{},{}],
-  rowHeaders:true,
-  licenseKey:'non-commercial-and-evaluation'
-});
-
 // MERGE
 function runMerge(){
 
-  const linkData = linksHot.getData();
-  const productIds = [...new Set(
-    linkData.map(r=>clean(r[1])).filter(Boolean)
+  const ids = [...new Set(
+    linksHot.getData().map(r=>clean(r[1])).filter(Boolean)
   )];
 
-  const newIds = productIds.join('|');
+  const idStr = ids.join('|');
 
-  const existing = existingHot.getData().filter(r=>r.some(x=>clean(x)));
+  const existing = existHot.getData().filter(r=>r.some(x=>clean(x)));
   const map = {};
   let maxId = 0;
 
   existing.forEach(r=>{
-    const [id,y,mk,mo,e,pids] = r.map(clean);
-    if(!y && !mk && !mo && !e) return;
-
-    const key = makeKey(y,mk,mo,e);
-
-    map[key] = {
-      id: Number(id)||0,
-      pids: pids
-    };
-
-    if(Number(id)>maxId) maxId = Number(id);
+    const [id,y,mk,mo,e,p] = r.map(clean);
+    const k = key(y,mk,mo,e);
+    map[k]={id:Number(id)||0,p};
+    if(Number(id)>maxId) maxId=Number(id);
   });
 
-  const fitments = fitmentsHot.getData().filter(r=>r.some(x=>clean(x)));
-
   let nextId = maxId;
-  const output = [];
+  const out = [];
 
-  fitments.forEach(r=>{
-    const [y,mk,mo,e] = r.map(clean);
+  fitHot.getData().forEach(r=>{
+    const [y,mk,mo,e]=r.map(clean);
     if(!e) return;
 
-    const key = makeKey(y,mk,mo,e);
+    const k = key(y,mk,mo,e);
 
-    if(map[key]){
-      const old = map[key].pids.split('|').filter(Boolean);
-      const merged = [...new Set([...old, ...productIds])];
-      const final = merged.join('|');
+    if(map[k]){
+      const old = map[k].p.split('|');
+      const merged = [...new Set([...old,...ids])].join('|');
+      const status = merged===map[k].p?'EXISTING':'UPDATED';
 
-      const status = final === map[key].pids ? 'EXISTING' : 'UPDATED';
-
-      output.push([
-        map[key].id,
-        y,mk,mo,e,
-        final,
-        status
-      ]);
+      out.push([map[k].id,y,mk,mo,e,merged,status]);
     } else {
       nextId++;
-      output.push([
-        nextId,
-        y,mk,mo,e,
-        newIds,
-        'NEW'
-      ]);
+      out.push([nextId,y,mk,mo,e,idStr,'NEW']);
     }
   });
 
-  outputHot.loadData(output);
+  outHot.loadData(out);
 }
 
 loadExisting();
