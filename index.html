@@ -2,17 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>FitmentOS v3</title>
+<title>FitmentOS PRO 🚀</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.css">
 <script src="https://cdn.jsdelivr.net/npm/handsontable@14.5.0/dist/handsontable.full.min.js"></script>
 
 <style>
 body {
+  margin:0;
+  font-family: 'Segoe UI', sans-serif;
   background:#0f172a;
   color:#e2e8f0;
-  font-family:Arial;
-  margin:0;
+}
+
+header {
+  background:#111827;
+  padding:12px 20px;
+  font-size:20px;
+  font-weight:bold;
+  border-bottom:1px solid #1f2937;
 }
 
 .tabs {
@@ -21,12 +29,15 @@ body {
 }
 
 .tab {
-  padding:12px 20px;
+  padding:12px 18px;
   cursor:pointer;
+  color:#94a3b8;
 }
 
 .tab.active {
-  background:#334155;
+  background:#0f172a;
+  color:#fff;
+  border-bottom:2px solid #3b82f6;
 }
 
 .pane {
@@ -34,23 +45,44 @@ body {
   padding:15px;
 }
 
-.pane.active {
-  display:block;
-}
+.pane.active { display:block; }
 
 button {
   padding:6px 12px;
   margin:5px;
+  background:#3b82f6;
+  border:none;
+  color:white;
+  border-radius:5px;
   cursor:pointer;
+}
+
+button:hover { background:#2563eb; }
+
+.stats {
+  display:flex;
+  gap:10px;
+  margin:10px 0;
+}
+
+.stat {
+  padding:10px;
+  background:#1e293b;
+  border-radius:6px;
+  min-width:100px;
+  text-align:center;
 }
 
 .status-new { color:#22c55e; font-weight:bold; }
 .status-updated { color:#f59e0b; font-weight:bold; }
 .status-existing { color:#94a3b8; }
+
 </style>
 </head>
 
 <body>
+
+<header>FitmentOS PRO 🚀</header>
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('links')">Links</div>
@@ -77,6 +109,14 @@ button {
 
 <div id="output" class="pane">
   <button onclick="runMerge()">Run Merge</button>
+  <button onclick="exportCSV()">Export CSV</button>
+
+  <div class="stats">
+    <div class="stat">NEW: <span id="sNew">0</span></div>
+    <div class="stat">UPDATED: <span id="sUpdated">0</span></div>
+    <div class="stat">EXISTING: <span id="sExisting">0</span></div>
+  </div>
+
   <div id="outputGrid"></div>
 </div>
 
@@ -91,12 +131,10 @@ function switchTab(name){
 }
 
 function clean(v){ return String(v||'').trim(); }
-
 function extract(url){
   const m = clean(url).match(/post=(\d+)/);
   return m?m[1]:'';
 }
-
 function key(y,mk,mo,e){
   return [y,mk,mo,e].map(clean).join('|').toLowerCase();
 }
@@ -108,9 +146,8 @@ const linksHot = new Handsontable(document.getElementById('linksGrid'), {
   columns:[{},{readOnly:true}],
   rowHeaders:true,
   licenseKey:'non-commercial-and-evaluation',
-
   afterChange(c,s){
-    if(!c || s==='loadData' || s==='auto') return;
+    if(!c||s==='loadData'||s==='auto') return;
     c.forEach(([r,col,ov,nv])=>{
       if(col===0){
         this.setDataAtCell(r,1,extract(nv),'auto');
@@ -118,7 +155,6 @@ const linksHot = new Handsontable(document.getElementById('linksGrid'), {
     });
   }
 });
-
 function addLinkRow(){ linksHot.alter('insert_row'); }
 
 // FITMENTS
@@ -128,7 +164,6 @@ const fitHot = new Handsontable(document.getElementById('fitmentsGrid'), {
   rowHeaders:true,
   licenseKey:'non-commercial-and-evaluation'
 });
-
 function addFitmentRow(){ fitHot.alter('insert_row'); }
 
 // EXISTING
@@ -152,10 +187,10 @@ function loadExisting(){
 function loadCSV(e){
   const file = e.target.files[0];
   const reader = new FileReader();
-  reader.onload = function(ev){
+  reader.onload = ev=>{
     const rows = ev.target.result.split('\n').map(r=>r.split(','));
     existHot.loadData(rows);
-  }
+  };
   reader.readAsText(file);
 }
 
@@ -165,11 +200,10 @@ const outHot = new Handsontable(document.getElementById('outputGrid'), {
   colHeaders:['ID','Year','Make','Model','Engine','Product IDs','Status'],
   rowHeaders:true,
   licenseKey:'non-commercial-and-evaluation',
-
   cells(r,c){
-    const cp = {};
+    const cp={};
     if(c===6){
-      const val = this.instance.getDataAtCell(r,c);
+      const val=this.instance.getDataAtCell(r,c);
       if(val==='NEW') cp.className='status-new';
       if(val==='UPDATED') cp.className='status-updated';
       if(val==='EXISTING') cp.className='status-existing';
@@ -181,45 +215,63 @@ const outHot = new Handsontable(document.getElementById('outputGrid'), {
 // MERGE
 function runMerge(){
 
-  const ids = [...new Set(
+  const ids=[...new Set(
     linksHot.getData().map(r=>clean(r[1])).filter(Boolean)
   )];
 
-  const idStr = ids.join('|');
+  const idStr=ids.join('|');
 
-  const existing = existHot.getData().filter(r=>r.some(x=>clean(x)));
-  const map = {};
-  let maxId = 0;
+  const existing=existHot.getData().filter(r=>r.some(x=>clean(x)));
+  const map={};
+  let maxId=0;
 
   existing.forEach(r=>{
-    const [id,y,mk,mo,e,p] = r.map(clean);
-    const k = key(y,mk,mo,e);
+    const [id,y,mk,mo,e,p]=r.map(clean);
+    const k=key(y,mk,mo,e);
     map[k]={id:Number(id)||0,p};
     if(Number(id)>maxId) maxId=Number(id);
   });
 
-  let nextId = maxId;
-  const out = [];
+  let nextId=maxId;
+  let n=0,u=0,x=0;
+  const out=[];
 
   fitHot.getData().forEach(r=>{
     const [y,mk,mo,e]=r.map(clean);
     if(!e) return;
 
-    const k = key(y,mk,mo,e);
+    const k=key(y,mk,mo,e);
 
     if(map[k]){
-      const old = map[k].p.split('|');
-      const merged = [...new Set([...old,...ids])].join('|');
-      const status = merged===map[k].p?'EXISTING':'UPDATED';
+      const old=map[k].p.split('|');
+      const merged=[...new Set([...old,...ids])].join('|');
+      const status=merged===map[k].p?'EXISTING':'UPDATED';
+
+      if(status==='UPDATED') u++; else x++;
 
       out.push([map[k].id,y,mk,mo,e,merged,status]);
     } else {
-      nextId++;
+      nextId++; n++;
       out.push([nextId,y,mk,mo,e,idStr,'NEW']);
     }
   });
 
+  document.getElementById('sNew').textContent=n;
+  document.getElementById('sUpdated').textContent=u;
+  document.getElementById('sExisting').textContent=x;
+
   outHot.loadData(out);
+}
+
+// EXPORT CSV
+function exportCSV(){
+  const data=outHot.getData();
+  const csv=data.map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='output.csv';
+  a.click();
 }
 
 loadExisting();
